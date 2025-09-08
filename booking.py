@@ -1,4 +1,4 @@
-# booking_scraper_completo.py - VERSIÓN MEJORADA
+# booking_scraper_completo.py - VERSIÓN MEJORADA CON EXTRACCIÓN DE REVIEWS
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -145,16 +145,31 @@ def extract_hotel_data_booking(card):
             except:
                 hotel_data['evaluation'] = "No disponible"
             
-            # Reviews count
+            # Reviews count - MEJORADO
             try:
                 reviews_text = review_container.text
-                review_match = re.search(r'([\d\.]+)\s*comentarios', reviews_text)
+                review_match = re.search(r'([\d\.,]+)\s*comentarios', reviews_text)
                 if review_match:
-                    hotel_data['review_count'] = review_match.group(1).replace('.', '')
+                    hotel_data['review_count'] = review_match.group(1).replace('.', '').replace(',', '')
                     hotel_data['reviews'] = f"{review_match.group(1)} comentarios"
                 else:
-                    hotel_data['review_count'] = "No disponible"
-                    hotel_data['reviews'] = "No disponible"
+                    # Intentar método alternativo
+                    try:
+                        review_elements = review_container.find_elements(By.CSS_SELECTOR, 'div')
+                        for element in review_elements:
+                            text = element.text.strip()
+                            if "comentario" in text.lower():
+                                match = re.search(r'([\d\.,]+)\s*comentarios', text)
+                                if match:
+                                    hotel_data['review_count'] = match.group(1).replace('.', '').replace(',', '')
+                                    hotel_data['reviews'] = f"{match.group(1)} comentarios"
+                                    break
+                        else:
+                            hotel_data['review_count'] = "No disponible"
+                            hotel_data['reviews'] = "No disponible"
+                    except:
+                        hotel_data['review_count'] = "No disponible"
+                        hotel_data['reviews'] = "No disponible"
             except:
                 hotel_data['review_count'] = "No disponible"
                 hotel_data['reviews'] = "No disponible"
@@ -184,94 +199,6 @@ def extract_hotel_data_booking(card):
     
     return hotel_data
 
-def extract_hotel_reviews(driver, hotel_url, max_reviews=10):
-    """Extrae reseñas detalladas de un hotel específico"""
-    reviews = []
-    
-    try:
-        print(f"📖 Extrayendo reseñas de: {hotel_url[:80]}...")
-        
-        # Abrir nueva pestaña para las reseñas
-        driver.execute_script("window.open('');")
-        driver.switch_to.window(driver.window_handles[1])
-        driver.get(hotel_url)
-        
-        # Esperar a que cargue la página
-        time.sleep(3)
-        handle_booking_popups(driver)
-        
-        # Navegar a la sección de reseñas
-        try:
-            reviews_link = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, 'a[href*="#tab-reviews"]'))
-            )
-            reviews_link.click()
-            time.sleep(2)
-        except:
-            print("⚠️  No se pudo encontrar la sección de reseñas")
-            driver.close()
-            driver.switch_to.window(driver.window_handles[0])
-            return reviews
-        
-        # Extraer reseñas
-        try:
-            review_elements = driver.find_elements(By.CSS_SELECTOR, '[data-testid="review-row"]')
-            print(f"📝 Encontradas {len(review_elements)} reseñas")
-            
-            for i, review_element in enumerate(review_elements[:max_reviews]):
-                try:
-                    review_data = {}
-                    
-                    # Rating de la reseña
-                    try:
-                        review_rating = review_element.find_element(By.CSS_SELECTOR, '[data-testid="review-score"]')
-                        review_data['rating'] = review_rating.text.strip()
-                    except:
-                        review_data['rating'] = "No disponible"
-                    
-                    # Título de la reseña
-                    try:
-                        review_title = review_element.find_element(By.CSS_SELECTOR, '[data-testid="review-title"]')
-                        review_data['title'] = review_title.text.strip()
-                    except:
-                        review_data['title'] = "No disponible"
-                    
-                    # Contenido de la reseña
-                    try:
-                        review_content = review_element.find_element(By.CSS_SELECTOR, '[data-testid="review-text"]')
-                        review_data['content'] = review_content.text.strip()
-                    except:
-                        review_data['content'] = "No disponible"
-                    
-                    # Autor y fecha
-                    try:
-                        review_meta = review_element.find_element(By.CSS_SELECTOR, '[data-testid="review-date"]')
-                        review_data['author_date'] = review_meta.text.strip()
-                    except:
-                        review_data['author_date'] = "No disponible"
-                    
-                    reviews.append(review_data)
-                    
-                except Exception as e:
-                    print(f"❌ Error extrayendo reseña {i+1}: {e}")
-                    continue
-                
-        except Exception as e:
-            print(f"❌ Error encontrando reseñas: {e}")
-        
-        # Cerrar pestaña y volver
-        driver.close()
-        driver.switch_to.window(driver.window_handles[0])
-        
-    except Exception as e:
-        print(f"❌ Error general extrayendo reseñas: {e}")
-        # Asegurarse de volver a la pestaña principal
-        if len(driver.window_handles) > 1:
-            driver.close()
-        driver.switch_to.window(driver.window_handles[0])
-    
-    return reviews
-
 def handle_booking_popups(driver):
     """Maneja popups de Booking.com"""
     popup_selectors = [
@@ -279,7 +206,10 @@ def handle_booking_popups(driver):
         'button[aria-label*="Close"]',
         'div[data-testid="modal-container"] button',
         'button:contains("×")',
-        'button:contains("X")'
+        'button:contains("X")',
+        'button[aria-label*="Cerrar"]',
+        'button:contains("Aceptar")',
+        'button:contains("Accept")'
     ]
     
     for selector in popup_selectors:
@@ -292,8 +222,201 @@ def handle_booking_popups(driver):
         except:
             continue
 
-def scrape_booking_complete(destination, checkin_date, checkout_date, max_hotels=100, max_reviews=10):
-    """Función principal de scraping"""
+def extract_hotel_reviews_sidebar(driver, hotel_url, max_reviews=10):
+    """
+    Extrae reseñas del sidebar modal de Booking.com
+    Basado en el botón 'Leer todos los comentarios' :cite[4]
+    """
+    reviews = []
+    original_window = driver.current_window_handle
+    
+    try:
+        print(f"📖 Navegando a: {hotel_url[:80]}...")
+        
+        # Abrir nueva pestaña para las reseñas
+        driver.execute_script("window.open('');")
+        driver.switch_to.window(driver.window_handles[1])
+        driver.get(hotel_url)
+        
+        # Esperar a que cargue la página
+        time.sleep(4)
+        handle_booking_popups(driver)
+        
+        # Intentar abrir el sidebar de reviews
+        try:
+            # Buscar y hacer click en el botón "Leer todos los comentarios"
+            all_reviews_button = WebDriverWait(driver, 15).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="fr-read-all-reviews"]'))
+            )
+            driver.execute_script("arguments[0].click();", all_reviews_button)
+            print("✅ Botón 'Leer todos los comentarios' clickeado")
+            time.sleep(3)
+            
+            # Esperar a que cargue el sidebar
+            WebDriverWait(driver, 15).until(
+                EC.presence_of_element_located((By.ID, 'reviewCardsSection'))
+            )
+            print("✅ Sidebar de reviews cargado")
+            
+            # Extraer reseñas del sidebar
+            reviews = extract_reviews_from_sidebar(driver, max_reviews)
+            
+            # Cerrar el sidebar
+            try:
+                close_button = driver.find_element(By.CSS_SELECTOR, 'button[aria-label*="Cerrar"], button[aria-label*="Close"]')
+                driver.execute_script("arguments[0].click();", close_button)
+                time.sleep(1)
+            except:
+                print("⚠️ No se pudo cerrar el sidebar automáticamente")
+                
+        except Exception as e:
+            print(f"❌ No se pudo acceder a las reviews: {e}")
+            # Método alternativo si el sidebar falla
+            try:
+                reviews = extract_reviews_alternative_method(driver, max_reviews)
+            except Exception as alt_e:
+                print(f"❌ Método alternativo también falló: {alt_e}")
+        
+    except Exception as e:
+        print(f"❌ Error general extrayendo reseñas: {e}")
+    finally:
+        # Cerrar pestaña y volver a la principal
+        driver.close()
+        driver.switch_to.window(original_window)
+    
+    return reviews
+
+def extract_reviews_from_sidebar(driver, max_reviews):
+    """Extrae reviews del sidebar modal con scroll infinito :cite[2]"""
+    reviews = []
+    
+    try:
+        # Localizar el contenedor del sidebar
+        sidebar = driver.find_element(By.ID, 'reviewCardsSection')
+        
+        print("🔄 Extrayendo reseñas con scroll...")
+        
+        # Hacer scroll para cargar más reviews
+        last_height = driver.execute_script("return arguments[0].scrollHeight", sidebar)
+        same_height_count = 0
+        
+        for attempt in range(5):
+            # Scroll dentro del sidebar
+            driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", sidebar)
+            time.sleep(2)
+            
+            # Verificar si hay nuevas reviews
+            new_height = driver.execute_script("return arguments[0].scrollHeight", sidebar)
+            if new_height == last_height:
+                same_height_count += 1
+                if same_height_count >= 2:
+                    break
+            else:
+                same_height_count = 0
+                last_height = new_height
+        
+        # Extraer todas las reviews visibles
+        review_elements = driver.find_elements(By.CSS_SELECTOR, '[data-testid="review-card"]')[:max_reviews]
+        print(f"📝 Encontradas {len(review_elements)} reseñas")
+        
+        for i, review_element in enumerate(review_elements):
+            try:
+                review_data = extract_single_review_data(review_element)
+                reviews.append(review_data)
+                
+                if (i + 1) % 5 == 0:
+                    print(f"📦 Procesadas {i + 1} reseñas...")
+                    
+            except Exception as e:
+                print(f"❌ Error extrayendo review {i + 1}: {e}")
+                continue
+                
+    except Exception as e:
+        print(f"❌ Error en extracción de reviews: {e}")
+    
+    return reviews
+
+def extract_single_review_data(review_element):
+    """Extrae datos de una sola reseña :cite[1]:cite[6]"""
+    review_data = {}
+    
+    try:
+        # Rating de la reseña
+        try:
+            rating_element = review_element.find_element(By.CSS_SELECTOR, '[data-testid="review-score"]')
+            review_data['rating'] = rating_element.text.strip()
+        except:
+            review_data['rating'] = "No disponible"
+        
+        # Título
+        try:
+            title_element = review_element.find_element(By.CSS_SELECTOR, '[data-testid="review-title"]')
+            review_data['title'] = title_element.text.strip()
+        except:
+            review_data['title'] = "No disponible"
+        
+        # Contenido
+        try:
+            content_element = review_element.find_element(By.CSS_SELECTOR, '[data-testid="review-text"]')
+            review_data['content'] = content_element.text.strip()
+        except:
+            review_data['content'] = "No disponible"
+        
+        # Autor y fecha
+        try:
+            meta_element = review_element.find_element(By.CSS_SELECTOR, '[data-testid="review-date"]')
+            review_data['author_date'] = meta_element.text.strip()
+        except:
+            review_data['author_date'] = "No disponible"
+        
+        # Información adicional del reviewer
+        try:
+            info_element = review_element.find_element(By.CSS_SELECTOR, '[data-testid="reviewer-info"]')
+            review_data['reviewer_info'] = info_element.text.strip()
+        except:
+            review_data['reviewer_info'] = "No disponible"
+            
+    except Exception as e:
+        print(f"❌ Error extrayendo datos de review: {e}")
+    
+    return review_data
+
+def extract_reviews_alternative_method(driver, max_reviews):
+    """Método alternativo para extraer reviews si el sidebar falla"""
+    reviews = []
+    
+    try:
+        # Intentar encontrar reviews directamente en la página
+        review_elements = driver.find_elements(By.CSS_SELECTOR, '[data-testid="review-row"]')[:max_reviews]
+        
+        for review_element in review_elements:
+            try:
+                review_data = {}
+                
+                # Extraer datos básicos de la review
+                try:
+                    title_element = review_element.find_element(By.CSS_SELECTOR, '[data-testid="review-title"]')
+                    review_data['title'] = title_element.text.strip()
+                except:
+                    review_data['title'] = "No disponible"
+                
+                try:
+                    content_element = review_element.find_element(By.CSS_SELECTOR, '[data-testid="review-text"]')
+                    review_data['content'] = content_element.text.strip()
+                except:
+                    review_data['content'] = "No disponible"
+                
+                reviews.append(review_data)
+            except:
+                continue
+                
+    except Exception as e:
+        print(f"❌ Error en método alternativo: {e}")
+    
+    return reviews
+
+def scrape_booking_complete(destination, checkin_date, checkout_date, max_hotels=50, max_reviews=10):
+    """Función principal de scraping con extracción de reviews"""
     driver = setup_stealth_driver()
     all_hotels_data = []
     
@@ -334,19 +457,25 @@ def scrape_booking_complete(destination, checkin_date, checkout_date, max_hotels
                 # Datos básicos
                 hotel_data = extract_hotel_data_booking(hotel)
                 
-                # Extraer reseñas si hay URL
-                if hotel_data.get('url') and hotel_data['url'] != "URL no disponible":
-                    hotel_data['reviews_detailed'] = extract_hotel_reviews(driver, hotel_data['url'], max_reviews)
+                # Extraer reseñas si hay URL disponible
+                hotel_url = hotel_data.get('url', '')
+                if hotel_url and hotel_url != "URL no disponible":
+                    print(f"📖 Extrayendo reseñas del hotel...")
+                    hotel_data['reviews_detailed'] = extract_hotel_reviews_sidebar(driver, hotel_url, max_reviews)
                 else:
                     hotel_data['reviews_detailed'] = []
+                    print("⚠️ URL no disponible para extraer reseñas")
                 
                 all_hotels_data.append(hotel_data)
                 
                 print(f"✅ Hotel {i+1}: {hotel_data.get('name', 'Sin nombre')}")
-                print(f"   📊 Reseñas extraídas: {len(hotel_data.get('reviews_detailed', []))}")
+                print(f"   ⭐ Rating: {hotel_data.get('rating', 'N/A')}")
+                print(f"   📊 Reviews: {hotel_data.get('review_count', 'N/A')}")
+                print(f"   📝 Reseñas extraídas: {len(hotel_data.get('reviews_detailed', []))}")
                 
                 # Pausa aleatoria entre hoteles
-                time.sleep(random.uniform(1, 3))
+                sleep_time = random.uniform(2, 4)
+                time.sleep(sleep_time)
                 
             except Exception as e:
                 print(f"❌ Error procesando hotel {i+1}: {e}")
@@ -362,7 +491,10 @@ def scrape_booking_complete(destination, checkin_date, checkout_date, max_hotels
             
             # Estadísticas
             total_reviews = sum(len(hotel.get('reviews_detailed', [])) for hotel in all_hotels_data)
+            hotels_with_reviews = sum(1 for hotel in all_hotels_data if hotel.get('reviews_detailed'))
+            
             print(f"📊 Reseñas totales extraídas: {total_reviews}")
+            print(f"🏨 Hoteles con reseñas: {hotels_with_reviews}/{len(all_hotels_data)}")
         
         return all_hotels_data
         
@@ -382,8 +514,8 @@ if __name__ == "__main__":
     destination = "Oaxaca, Mexico"
     checkin_date = "2025-09-09"
     checkout_date = "2025-09-10"
-    max_hotels = 100  # Máximo de hoteles a extraer
-    max_reviews = 10  # Reseñas por hotel
+    max_hotels = 30  # Reducido para pruebas
+    max_reviews = 5   # Reducido para pruebas
     
     results = scrape_booking_complete(destination, checkin_date, checkout_date, max_hotels, max_reviews)
     
