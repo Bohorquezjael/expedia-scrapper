@@ -1,4 +1,4 @@
-# booking_stealth_scraper.py - VERSIÓN OPTIMIZADA PARA BOOKING.COM
+# booking_scraper_completo.py - VERSIÓN MEJORADA
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -10,145 +10,104 @@ from selenium.webdriver.common.keys import Keys
 import time
 import json
 import random
-import requests
-from bs4 import BeautifulSoup
+import re
 
 def setup_stealth_driver():
+    """Configura driver Chrome con técnicas stealth"""
     options = Options()
+    
+    # Configuración anti-detección
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--disable-infobars")
     options.add_argument("--disable-notifications")
     options.add_argument("--disable-popup-blocking")
     options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--disable-web-security")
-    options.add_argument("--disable-extensions")
+    
     user_agents = [
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     ]
     
     options.add_argument(f"--user-agent={random.choice(user_agents)}")
-    options.add_experimental_option("excludeSwitches", [
-        "enable-automation",
-        "enable-logging",
-        "ignore-certificate-errors"
-    ])
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option('useAutomationExtension', False)
-    options.add_experimental_option("prefs", {
-        "profile.default_content_setting_values.notifications": 2,
-        "profile.managed_default_content_settings.images": 1,
-        "credentials_enable_service": False,
-        "profile.password_manager_enabled": False,
-        "profile.default_content_setting_values.geolocation": 2
-    })
     
     driver = webdriver.Chrome(options=options)
-    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
-        'source': '''
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
-            Object.defineProperty(navigator, 'plugins', {
-                get: () => [1, 2, 3, 4, 5],
-            });
-            Object.defineProperty(navigator, 'languages', {
-                get: () => ['en-US', 'en', 'es'],
-            });
-            window.chrome = {
-                runtime: {},
-            };
-        '''
-    })
+    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     
     return driver
 
-def human_like_interactions(driver):
-    print("🧠 Simulando comportamiento humano...")
+def human_like_scroll(driver, scroll_amount=3000):
+    """Scroll humano para cargar más resultados"""
+    print(f"📜 Haciendo scroll para cargar más hoteles...")
     
-    try:
-        actions = ActionChains(driver)
-        for _ in range(random.randint(2, 4)):
-            x_offset = random.randint(-100, 100)
-            y_offset = random.randint(-100, 100)
-            actions.move_by_offset(x_offset, y_offset).perform()
-            time.sleep(random.uniform(0.1, 0.3))
-        scroll_parts = random.randint(3, 6)
-        total_scroll = random.randint(800, 1500)
+    total_scrolled = 0
+    scroll_steps = random.randint(8, 15)
+    
+    for step in range(scroll_steps):
+        scroll_increment = scroll_amount // scroll_steps
+        driver.execute_script(f"window.scrollBy(0, {scroll_increment})")
+        total_scrolled += scroll_increment
         
-        for i in range(scroll_parts):
-            scroll_amount = total_scroll // scroll_parts
-            driver.execute_script(f"window.scrollBy(0, {scroll_amount})")
-            time.sleep(random.uniform(0.5, 1.2))
-        body = driver.find_element(By.TAG_NAME, 'body')
-        for _ in range(random.randint(1, 3)):
-            body.send_keys(Keys.PAGE_DOWN)
-            time.sleep(random.uniform(0.4, 0.8))
+        # Comportamiento humano: pausas variables
+        pause_time = random.uniform(0.5, 1.5)
+        time.sleep(pause_time)
         
-        print("✅ Comportamiento humano simulado")
-        
-    except Exception as e:
-        print(f"⚠️  Error en simulación humana: {e}")
+        # Cerrar popups durante el scroll
+        if step % 3 == 0:
+            handle_booking_popups(driver)
+    
+    print(f"✅ Scroll completado: {total_scrolled}px")
+    return total_scrolled
 
-def handle_booking_popups(driver):
-    print("🛡️  Manejo de popups de Booking.com...")
+def load_all_hotels(driver, max_hotels=100):
+    """Carga todos los hoteles disponibles mediante scroll infinito"""
+    print(f"🔄 Cargando hasta {max_hotels} hoteles...")
     
-    booking_popup_selectors = [
-        'div[role="dialog"] button[aria-label*="Dismiss"]',
-        'button[aria-label*="Close"]',
-        'button[data-modal-aria-label-close]',
-        'div[data-testid="modal-container"] button',
-        'div[class*="modal-mask"] button',
-        'div[class*="overlay"] button',
-        'button[class*="close"]',
-        'button[class*="dismiss"]',
-        'div[data-capla-component="banner/prompt"] button',
-        'div[class*="sign_in"] button',
-        'div[class*="cookie"] button',
-        'button:contains("Accept")',
-        'button:contains("Reject")',
-        'button:contains("×")',
-        'button:contains("X")'
-    ]
+    hotels_loaded = 0
+    previous_count = 0
+    same_count_iterations = 0
+    max_iterations = 10
     
-    closed_count = 0
-    max_attempts = 2
-    
-    for attempt in range(max_attempts):
-        for selector in booking_popup_selectors:
-            try:
-                elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                for element in elements:
-                    try:
-                        if element.is_displayed():
-                            driver.execute_script("arguments[0].click();", element)
-                            print(f"✅ Cerrado popup: {selector}")
-                            closed_count += 1
-                            time.sleep(random.uniform(0.3, 0.7))
-                    except:
-                        continue
-            except:
-                continue
-        try:
-            body = driver.find_element(By.TAG_NAME, 'body')
-            body.send_keys(Keys.ESCAPE)
-            print("✅ Tecla Escape presionada")
-            time.sleep(0.5)
-        except:
-            pass
+    for iteration in range(max_iterations):
+        # Obtener hoteles actuales
+        current_hotels = driver.find_elements(By.CSS_SELECTOR, '[data-testid="property-card"]')
+        current_count = len(current_hotels)
         
-        time.sleep(1)
+        print(f"📊 Iteración {iteration + 1}: {current_count} hoteles encontrados")
+        
+        # Verificar si alcanzamos el máximo
+        if current_count >= max_hotels:
+            print(f"🎉 ¡Meta alcanzada! {current_count} hoteles cargados")
+            return current_hotels[:max_hotels]
+        
+        # Verificar si no hay más hoteles
+        if current_count == previous_count:
+            same_count_iterations += 1
+            if same_count_iterations >= 2:
+                print(f"⚠️  No hay más hoteles disponibles. Total: {current_count}")
+                return current_hotels
+        else:
+            same_count_iterations = 0
+        
+        previous_count = current_count
+        
+        # Scroll para cargar más resultados
+        human_like_scroll(driver, 2000)
+        
+        # Esperar a que carguen nuevos elementos
+        time.sleep(random.uniform(2, 4))
     
-    return closed_count
+    print(f"📦 Total final: {previous_count} hoteles")
+    return driver.find_elements(By.CSS_SELECTOR, '[data-testid="property-card"]')[:max_hotels]
 
 def extract_hotel_data_booking(card):
+    """Extrae datos básicos del hotel"""
     hotel_data = {}
     
     try:
-        # Nombre del hotel
+        # Nombre
         try:
             name_element = card.find_element(By.CSS_SELECTOR, '[data-testid="title"]')
             hotel_data['name'] = name_element.text.strip()
@@ -160,50 +119,51 @@ def extract_hotel_data_booking(card):
             price_element = card.find_element(By.CSS_SELECTOR, '[data-testid="price-and-discounted-price"]')
             hotel_data['price'] = price_element.text.strip()
         except:
-            try:
-                price_element = card.find_element(By.CSS_SELECTOR, '.bui-price-display__value')
-                hotel_data['price'] = price_element.text.strip()
-            except:
-                hotel_data['price'] = "Precio no disponible"
+            hotel_data['price'] = "Precio no disponible"
         
-        # RATING Y REVIEWS
+        # Rating y Reviews
         try:
             review_container = card.find_element(By.CSS_SELECTOR, '[data-testid="review-score"]')
+            
+            # Rating numérico
             try:
-                rating_element = review_container.find_element(By.CSS_SELECTOR, 'div[aria-hidden="true"].f63b14ab7a')
+                rating_element = review_container.find_element(By.CSS_SELECTOR, 'div[aria-hidden="true"]')
                 hotel_data['rating'] = rating_element.text.strip()
             except:
-                hotel_data['rating'] = "Rating no disponible"
+                hotel_data['rating'] = "No disponible"
+            
+            # Evaluación
             try:
-                evaluation_element = review_container.find_element(By.CSS_SELECTOR, '.f63b14ab7a.f54d35db44.bccbee2f63')
-                hotel_data['evaluation'] = evaluation_element.text.strip()
+                evaluation_elements = review_container.find_elements(By.CSS_SELECTOR, 'div')
+                for elem in evaluation_elements:
+                    text = elem.text.strip()
+                    if text in ['Muy bien', 'Bien', 'Excelente', 'Fabuloso', 'Genial']:
+                        hotel_data['evaluation'] = text
+                        break
+                else:
+                    hotel_data['evaluation'] = "No disponible"
             except:
-                hotel_data['evaluation'] = "Evaluación no disponible"
+                hotel_data['evaluation'] = "No disponible"
+            
+            # Reviews count
             try:
-                reviews_element = review_container.find_element(By.CSS_SELECTOR, '.fff1944c52.fb14de7f14.eaa8455879')
-                hotel_data['reviews'] = reviews_element.text.strip()
-                import re
-                review_count = re.search(r'([\d\.]+)\s*comentarios', hotel_data['reviews'])
-                if review_count:
-                    hotel_data['review_count'] = review_count.group(1).replace('.', '')
+                reviews_text = review_container.text
+                review_match = re.search(r'([\d\.]+)\s*comentarios', reviews_text)
+                if review_match:
+                    hotel_data['review_count'] = review_match.group(1).replace('.', '')
+                    hotel_data['reviews'] = f"{review_match.group(1)} comentarios"
                 else:
                     hotel_data['review_count'] = "No disponible"
-                    
+                    hotel_data['reviews'] = "No disponible"
             except:
-                hotel_data['reviews'] = "Reviews no disponibles"
                 hotel_data['review_count'] = "No disponible"
+                hotel_data['reviews'] = "No disponible"
                 
-        except Exception as e:
-            hotel_data['rating'] = "Rating no disponible"
-            hotel_data['reviews'] = "Reviews no disponibles"
-            hotel_data['review_count'] = "No disponible"
-        
-        # Ubicación
-        try:
-            location_element = card.find_element(By.CSS_SELECTOR, '[data-testid="address"]')
-            hotel_data['location'] = location_element.text.strip()
         except:
-            hotel_data['location'] = "Ubicación no disponible"
+            hotel_data['rating'] = "No disponible"
+            hotel_data['evaluation'] = "No disponible"
+            hotel_data['review_count'] = "No disponible"
+            hotel_data['reviews'] = "No disponible"
         
         # URL
         try:
@@ -212,243 +172,223 @@ def extract_hotel_data_booking(card):
         except:
             hotel_data['url'] = "URL no disponible"
         
-        
+        # Ubicación
+        try:
+            location_element = card.find_element(By.CSS_SELECTOR, '[data-testid="address"]')
+            hotel_data['location'] = location_element.text.strip()
+        except:
+            hotel_data['location'] = "Ubicación no disponible"
             
     except Exception as e:
-        print(f"❌ Error extrayendo datos: {e}")
+        print(f"❌ Error extrayendo datos básicos: {e}")
     
     return hotel_data
 
-def rapid_booking_extraction(driver):
-    print("⚡ Extracción rápida de Booking.com...")
+def extract_hotel_reviews(driver, hotel_url, max_reviews=10):
+    """Extrae reseñas detalladas de un hotel específico"""
+    reviews = []
     
-    results = []
-    max_attempts = 3
-    
-    for attempt in range(max_attempts):
+    try:
+        print(f"📖 Extrayendo reseñas de: {hotel_url[:80]}...")
+        
+        # Abrir nueva pestaña para las reseñas
+        driver.execute_script("window.open('');")
+        driver.switch_to.window(driver.window_handles[1])
+        driver.get(hotel_url)
+        
+        # Esperar a que cargue la página
+        time.sleep(3)
+        handle_booking_popups(driver)
+        
+        # Navegar a la sección de reseñas
         try:
-            hotel_selectors = [
-                '[data-testid="property-card"]',
-                'div[data-testid="property-card"]',
-                'div[data-hotelid]',
-                'div[class*="property-card"]',
-                'div[class*="sr_property_block"]'
-            ]
+            reviews_link = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, 'a[href*="#tab-reviews"]'))
+            )
+            reviews_link.click()
+            time.sleep(2)
+        except:
+            print("⚠️  No se pudo encontrar la sección de reseñas")
+            driver.close()
+            driver.switch_to.window(driver.window_handles[0])
+            return reviews
+        
+        # Extraer reseñas
+        try:
+            review_elements = driver.find_elements(By.CSS_SELECTOR, '[data-testid="review-row"]')
+            print(f"📝 Encontradas {len(review_elements)} reseñas")
             
-            hotels = []
-            for selector in hotel_selectors:
+            for i, review_element in enumerate(review_elements[:max_reviews]):
                 try:
-                    hotels = driver.find_elements(By.CSS_SELECTOR, selector)
-                    if hotels:
-                        print(f"✅ Encontrados {len(hotels)} hoteles (intento {attempt + 1})")
-                        break
-                except:
-                    continue
-            
-            if not hotels:
-                print(f"❌ No se encontraron hoteles en intento {attempt + 1}")
-                time.sleep(2)
-                continue
-            
-            for i, hotel in enumerate(hotels[:15]): 
-                try:
-                    hotel_data = extract_hotel_data_booking(hotel)
-                    results.append(hotel_data)
+                    review_data = {}
                     
-                    if (i + 1) % 5 == 0:
-                        print(f"📦 Extraídos {i + 1} hoteles...")
-                        
+                    # Rating de la reseña
+                    try:
+                        review_rating = review_element.find_element(By.CSS_SELECTOR, '[data-testid="review-score"]')
+                        review_data['rating'] = review_rating.text.strip()
+                    except:
+                        review_data['rating'] = "No disponible"
+                    
+                    # Título de la reseña
+                    try:
+                        review_title = review_element.find_element(By.CSS_SELECTOR, '[data-testid="review-title"]')
+                        review_data['title'] = review_title.text.strip()
+                    except:
+                        review_data['title'] = "No disponible"
+                    
+                    # Contenido de la reseña
+                    try:
+                        review_content = review_element.find_element(By.CSS_SELECTOR, '[data-testid="review-text"]')
+                        review_data['content'] = review_content.text.strip()
+                    except:
+                        review_data['content'] = "No disponible"
+                    
+                    # Autor y fecha
+                    try:
+                        review_meta = review_element.find_element(By.CSS_SELECTOR, '[data-testid="review-date"]')
+                        review_data['author_date'] = review_meta.text.strip()
+                    except:
+                        review_data['author_date'] = "No disponible"
+                    
+                    reviews.append(review_data)
+                    
                 except Exception as e:
+                    print(f"❌ Error extrayendo reseña {i+1}: {e}")
                     continue
-            
-            if results:
-                break
                 
         except Exception as e:
-            print(f"❌ Error en intento {attempt + 1}: {e}")
-            time.sleep(2)
+            print(f"❌ Error encontrando reseñas: {e}")
+        
+        # Cerrar pestaña y volver
+        driver.close()
+        driver.switch_to.window(driver.window_handles[0])
+        
+    except Exception as e:
+        print(f"❌ Error general extrayendo reseñas: {e}")
+        # Asegurarse de volver a la pestaña principal
+        if len(driver.window_handles) > 1:
+            driver.close()
+        driver.switch_to.window(driver.window_handles[0])
     
-    return results
+    return reviews
 
-def check_booking_detection(driver):
+def handle_booking_popups(driver):
+    """Maneja popups de Booking.com"""
+    popup_selectors = [
+        'button[aria-label*="Dismiss"]',
+        'button[aria-label*="Close"]',
+        'div[data-testid="modal-container"] button',
+        'button:contains("×")',
+        'button:contains("X")'
+    ]
     
-    try:
-        detection_indicators = [
-            'div[data-testid="no-search-results"]',
-            'div:contains("No results found")',
-            'div:contains("No se encontraron resultados")',
-            'div:contains("access denied")',
-            'div:contains("bot detected")',
-            'div[class*="captcha"]',
-            'iframe[src*="captcha"]',
-            'div[class*="error"]'
-        ]
-        
-        for selector in detection_indicators:
-            try:
-                elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                if elements and any(el.is_displayed() for el in elements):
-                    print("❌ Detección de bot identificada")
-                    return True
-            except:
-                continue
-        
-        hotel_elements = driver.find_elements(By.CSS_SELECTOR, '[data-testid="property-card"]')
-        if len(hotel_elements) < 2:
-            print("❌ Muy pocos resultados, posible detección")
-            return True
-            
-        return False
-        
-    except:
-        return False
+    for selector in popup_selectors:
+        try:
+            elements = driver.find_elements(By.CSS_SELECTOR, selector)
+            for element in elements:
+                if element.is_displayed():
+                    driver.execute_script("arguments[0].click();", element)
+                    time.sleep(0.5)
+        except:
+            continue
 
-def scrape_booking_stealth(destination, checkin_date, checkout_date):
+def scrape_booking_complete(destination, checkin_date, checkout_date, max_hotels=100, max_reviews=10):
+    """Función principal de scraping"""
     driver = setup_stealth_driver()
+    all_hotels_data = []
     
     try:
+        # Construir URL
         base_url = "https://www.booking.com/searchresults.html"
         params = {
             'ss': destination,
             'checkin': checkin_date,
             'checkout': checkout_date,
-            'group_adults': '1',
+            'group_adults': '2',
             'no_rooms': '1',
             'group_children': '0'
         }
-        
         query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
         url = f"{base_url}?{query_string}"
         
-        print(f"🌐 Navegando a Booking.com: {destination}")
+        print(f"🌐 Navegando a: {destination}")
         driver.get(url)
         
-        initial_wait = random.uniform(5, 10)
-        print(f"⏰ Espera inicial: {initial_wait:.1f}s")
-        time.sleep(initial_wait)
-        
+        # Esperar inicial
+        time.sleep(5)
         handle_booking_popups(driver)
         
-        human_like_interactions(driver)
+        # Cargar todos los hoteles
+        all_hotels = load_all_hotels(driver, max_hotels)
+        print(f"🏨 Total de hoteles a procesar: {len(all_hotels)}")
         
-        if check_booking_detection(driver):
-            print("🚨 Detección temprana! Ajustando estrategia...")
-            time.sleep(3)
-            handle_booking_popups(driver)
+        # Extraer datos de cada hotel
+        for i, hotel in enumerate(all_hotels):
+            try:
+                print(f"\n🔍 Procesando hotel {i+1}/{len(all_hotels)}")
+                
+                # Scroll para hacer visible
+                driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", hotel)
+                time.sleep(0.5)
+                
+                # Datos básicos
+                hotel_data = extract_hotel_data_booking(hotel)
+                
+                # Extraer reseñas si hay URL
+                if hotel_data.get('url') and hotel_data['url'] != "URL no disponible":
+                    hotel_data['reviews_detailed'] = extract_hotel_reviews(driver, hotel_data['url'], max_reviews)
+                else:
+                    hotel_data['reviews_detailed'] = []
+                
+                all_hotels_data.append(hotel_data)
+                
+                print(f"✅ Hotel {i+1}: {hotel_data.get('name', 'Sin nombre')}")
+                print(f"   📊 Reseñas extraídas: {len(hotel_data.get('reviews_detailed', []))}")
+                
+                # Pausa aleatoria entre hoteles
+                time.sleep(random.uniform(1, 3))
+                
+            except Exception as e:
+                print(f"❌ Error procesando hotel {i+1}: {e}")
+                continue
         
-        print("⚡ Iniciando extracción rápida...")
-        results = rapid_booking_extraction(driver)
-        
-        if check_booking_detection(driver):
-            print("🚨 Detección durante extracción!")
-            results = results[:1000]  
-        
-        if results:
-            filename = "booking.json"
-            # filename = f"booking_{destination.lower().replace(' ', '_')}.json"
+        # Guardar resultados
+        if all_hotels_data:
+            filename = f"booking_{destination.lower().replace(' ', '_')}_completo.json"
             with open(filename, 'w', encoding='utf-8') as f:
-                json.dump(results, f, ensure_ascii=False, indent=2)
+                json.dump(all_hotels_data, f, ensure_ascii=False, indent=2)
             
-            print(f"💾 Guardados {len(results)} hoteles en {filename}")
+            print(f"\n💾 Guardados {len(all_hotels_data)} hoteles con reseñas en {filename}")
             
-            print("\n📋 RESULTADOS OBTENIDOS:")
-            for i, hotel in enumerate(results[:5]):
-                print(f"{i+1}. {hotel.get('name', 'Sin nombre')} - {hotel.get('price', 'Sin precio')}")
-            
-            if len(results) > 5:
-                print(f"... y {len(results) - 5} hoteles más")
+            # Estadísticas
+            total_reviews = sum(len(hotel.get('reviews_detailed', [])) for hotel in all_hotels_data)
+            print(f"📊 Reseñas totales extraídas: {total_reviews}")
         
-        return results
+        return all_hotels_data
         
     except Exception as e:
-        print(f"❌ Error durante scraping: {e}")
+        print(f"❌ Error general: {e}")
         import traceback
         traceback.print_exc()
         return []
     finally:
         driver.quit()
 
-def alternative_booking_approach():
-    
-    print("🔄 Intentando enfoque alternativo para Booking.com...")
-    
-    user_agent_configs = [
-        {
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "window-size": "1920,1080"
-        },
-        {
-            "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "window-size": "1440,900"
-        },
-        {
-            "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-            "window-size": "1366,768"
-        }
-    ]
-    
-    for i, config in enumerate(user_agent_configs):
-        print(f"🔧 Intentando configuración {i + 1}...")
-        try:
-            options = Options()
-            for key, value in config.items():
-                options.add_argument(f"--{key}={value}")
-            
-            options.add_argument("--disable-blink-features=AutomationControlled")
-            
-            driver = webdriver.Chrome(options=options)
-            driver.get("https://www.booking.com")
-            
-            time.sleep(4)
-            human_like_interactions(driver)
-            
-            try:
-                search_box = driver.find_element(By.CSS_SELECTOR, 'input[name="ss"]')
-                search_box.send_keys("Oaxaca")
-                search_box.send_keys(Keys.RETURN)
-                time.sleep(5)
-                
-                results = rapid_booking_extraction(driver)
-                if results:
-                    print(f"✅ Éxito con configuración {i + 1}")
-                    driver.quit()
-                    return results
-            except:
-                continue
-                
-            driver.quit()
-            time.sleep(3)
-            
-        except Exception as e:
-            print(f"❌ Error con configuración {i + 1}: {e}")
-    
-    return []
-
+# USO
 if __name__ == "__main__":
-    print("🚀 Iniciando scraping de Booking.com con protección anti-detección...")
+    print("🚀 Iniciando scraping completo de Booking.com...")
     
+    # Configuración
     destination = "Oaxaca, Mexico"
     checkin_date = "2025-09-09"
     checkout_date = "2025-09-10"
+    max_hotels = 100  # Máximo de hoteles a extraer
+    max_reviews = 10  # Reseñas por hotel
     
-    results = scrape_booking_stealth(destination, checkin_date, checkout_date)
-    
-    if not results:
-        print("🔄 Primer intento fallido, probando enfoque alternativo...")
-        results = alternative_booking_approach()
+    results = scrape_booking_complete(destination, checkin_date, checkout_date, max_hotels, max_reviews)
     
     if results:
-        print(f"\n🎉 ¡Éxito! Se extrajeron {len(results)} hoteles de Booking.com")
-        print("💾 Los resultados han sido guardados en archivo JSON")
+        print(f"\n🎉 ¡Éxito! Extraídos {len(results)} hoteles")
+        print(f"📝 Reseñas totales: {sum(len(h['reviews_detailed']) for h in results)}")
     else:
-        print("\n❌ No se pudieron extraer datos de Booking.com.")
-        print("💡 Recomendaciones para próximos intentos:")
-        print("1. Usar proxies residenciales rotativos")
-        print("2. Aumentar los tiempos de espera entre requests")
-        print("3. Considerar usar la API oficial de Booking.com")
-        print("4. Esperar 24-48 horas antes de reintentar")
-    
-    print("\n⚠️  Nota: El web scraping puede violar los Términos de Servicio.")
-    print("   Asegúrate de cumplir con las regulaciones locales y los TOS del sitio.")
-    
-    input("\nPresiona Enter para salir...")
+        print("\n❌ No se pudieron extraer datos")

@@ -1,4 +1,4 @@
-# expediaMod2.py - VERSIÓN CON SELECTORES ESPECÍFICOS PARA MODAL INICIAL
+# expediaMod2.py - VERSIÓN STEALTH ANTI-DETECCIÓN
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -7,358 +7,335 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import time
 import json
+import random
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
 
-def close_initial_modal(driver):
-    """Cierra específicamente el modal que aparece al cargar la página"""
-    print("🔍 Buscando modal inicial específico...")
+def human_like_behavior(driver):
+    """Simula comportamiento humano para evitar detección"""
+    print("🧠 Simulando comportamiento humano...")
     
-    # SELECTORES ESPECÍFICOS para el modal inicial de Expedia
-    initial_modal_selectors = [
-        # Modal de suscripción/registro común en Expedia
-        'div[data-stid="form-modal"]',
-        'div[data-test-id="signin-modal"]',
-        'div[data-modal-id="signin"]',
-        'div[role="dialog"][aria-label*="sign in"]',
-        
-        # Modal de "Continue with Google/Email"
-        'div:contains("Continue with Google")',
-        'div:contains("Continuar con Google")',
-        'div:contains("Sign in")',
-        'div:contains("Iniciar sesión")',
-        
-        # Modal de email subscription
-        'div[data-stid="subscription-modal"]',
-        'div[data-test-id="email-signup-modal"]',
-        
-        # Botones específicos de cierre para estos modales
-        'button[aria-label="Close"]',
-        'button:contains("Maybe later")',
-        'button:contains("No thanks")',
-        'button:contains("Not now")',
-        'button:contains("Cerrar")',
-        'button:contains("Cancelar")',
-        
-        # Botones dentro de modales específicos
-        'div[data-stid="form-modal"] button',
-        'div[data-test-id="signin-modal"] button',
-        'div[role="dialog"] button'
-    ]
-    
-    for selector in initial_modal_selectors:
-        try:
-            elements = driver.find_elements(By.CSS_SELECTOR, selector)
-            for element in elements:
-                try:
-                    if element.is_displayed():
-                        print(f"✅ Encontrado modal inicial con: {selector}")
-                        
-                        # Si es un botón, hacer click
-                        if element.tag_name.lower() == 'button':
-                            driver.execute_script("arguments[0].click();", element)
-                            print(f"✅ Cerrado modal inicial con botón: {selector}")
-                            return True
-                        # Si es un div/modal, buscar botones de cierre dentro
-                        else:
-                            close_buttons = element.find_elements(By.CSS_SELECTOR, 'button')
-                            for btn in close_buttons:
-                                if btn.is_displayed() and ('close' in btn.text.lower() or 'cancel' in btn.text.lower() or 'dismiss' in btn.text.lower()):
-                                    driver.execute_script("arguments[0].click();", btn)
-                                    print(f"✅ Cerrado modal inicial con botón interno: {btn.text}")
-                                    return True
-                except:
-                    continue
-        except:
-            continue
-    
-    return False
-
-def close_popups(driver):
-    """Cierra todos los popups, modales y overlays posibles"""
-    print("Buscando y cerrando popups...")
-    
-    # PRIMERO: Intentar cerrar el modal inicial específico
-    if close_initial_modal(driver):
-        time.sleep(2)
-        return 1
-    
-    # SEGUNDO: Selectores generales
-    popup_selectors = [
-        'button[aria-label*="close"]',
-        'button[aria-label*="dismiss"]',
-        'button[class*="close"]',
-        'button[class*="dismiss"]',
-        'div[class*="overlay"] button',
-        'div[class*="modal"] button',
-        'div[class*="popup"] button',
-        'svg[class*="close"]',
-        'div[data-stid*="close"]',
-        'button[data-stid*="close"]',
-        'div[class*="backdrop"]',
-        'button:contains("×")',
-        'button:contains("X")',
-        'button:contains("No thanks")',
-        'button:contains("Maybe later")'
-    ]
-    
-    closed_count = 0
-    for selector in popup_selectors:
-        try:
-            close_buttons = driver.find_elements(By.CSS_SELECTOR, selector)
-            for button in close_buttons:
-                try:
-                    if button.is_displayed():
-                        driver.execute_script("arguments[0].click();", button)
-                        print(f"✅ Cerrado popup con selector: {selector}")
-                        closed_count += 1
-                        time.sleep(0.5)
-                except:
-                    continue
-        except:
-            continue
-    
-    # TERCERO: Intentar con Escape key
     try:
-        from selenium.webdriver.common.keys import Keys
+        # Movimientos de mouse aleatorios
+        actions = ActionChains(driver)
+        
+        # Mover mouse en patrones aleatorios
+        for _ in range(3):
+            x = random.randint(100, 1000)
+            y = random.randint(100, 800)
+            actions.move_by_offset(x, y).perform()
+            time.sleep(random.uniform(0.1, 0.5))
+        
+        # Scroll humano (no todo de una vez)
+        scroll_parts = random.randint(3, 6)
+        for i in range(scroll_parts):
+            scroll_amount = random.randint(200, 500)
+            driver.execute_script(f"window.scrollBy(0, {scroll_amount})")
+            time.sleep(random.uniform(0.5, 1.5))
+        
+        # Teclas aleatorias
         body = driver.find_element(By.TAG_NAME, 'body')
-        body.send_keys(Keys.ESCAPE)
-        print("✅ Tecla Escape presionada")
-        closed_count += 1
-        time.sleep(0.5)
-    except:
-        pass
-    
-    # CUARTO: Buscar overlays y hacer click
-    overlay_selectors = [
-        'div[class*="overlay"]',
-        'div[class*="backdrop"]',
-        'div[class*="modal-backdrop"]'
-    ]
-    
-    for selector in overlay_selectors:
-        try:
-            overlays = driver.find_elements(By.CSS_SELECTOR, selector)
-            for overlay in overlays:
-                if overlay.is_displayed():
-                    try:
-                        overlay.click()
-                        print(f"✅ Cerrado overlay: {selector}")
-                        closed_count += 1
-                        time.sleep(0.5)
-                    except:
-                        driver.execute_script("arguments[0].style.display = 'none';", overlay)
-                        print(f"✅ Overlay oculto con JS: {selector}")
-                        closed_count += 1
-        except:
-            continue
-    
-    print(f"✅ Total de elementos cerrados: {closed_count}")
-    return closed_count
-
-def debug_modal(driver):
-    """Función para debuggear y identificar el modal"""
-    print("🔍 Debuggeando modales presentes...")
-    
-    # Buscar todos los elementos visibles que podrían ser modales
-    modal_indicators = [
-        'div[role="dialog"]',
-        'div[class*="modal"]',
-        'div[class*="popup"]',
-        'div[class*="overlay"]',
-        'div[class*="backdrop"]',
-        'div[data-stid]',
-        'div[data-test-id]',
-        'div[aria-modal="true"]'
-    ]
-    
-    print("Elementos modales encontrados:")
-    for selector in modal_indicators:
-        try:
-            elements = driver.find_elements(By.CSS_SELECTOR, selector)
-            for i, element in enumerate(elements):
-                if element.is_displayed():
-                    print(f"📍 {selector}:")
-                    print(f"   Texto: {element.text[:100]}...")
-                    print(f"   Clases: {element.get_attribute('class')}")
-                    print(f"   Data attributes: {element.get_attribute('data-stid') or element.get_attribute('data-test-id')}")
-                    print("   ---")
-        except:
-            continue
-
-def extract_hotel_data(card):
-    hotel_data = {}
-    
-    try:
-        # URL
-        try:
-            href_element = card.find_element(By.CSS_SELECTOR, "[data-stid='open-hotel-information']")
-            href = href_element.get_attribute("href") or ""
-            hotel_data['url'] = f"https://www.expedia.com{href}" if not href.startswith('http') else href
-        except:
-            hotel_data['url'] = "URL no disponible"
+        for _ in range(2):
+            body.send_keys(Keys.PAGE_DOWN)
+            time.sleep(random.uniform(0.3, 0.8))
         
-        # Nombre
-        try:
-            name_element = card.find_element(By.CSS_SELECTOR, "h3.uitk-heading")
-            hotel_data['name'] = name_element.text.strip()
-        except:
-            hotel_data['name'] = "Nombre no disponible"
+        print("✅ Comportamiento humano simulado")
         
-        # Precio
-        try:
-            price_element = card.find_element(By.CSS_SELECTOR, ".uitk-text.uitk-type-end.uitk-type-300.uitk-text-default-theme")
-            hotel_data['price'] = price_element.text.strip()
-        except NoSuchElementException:
-            try:
-                price_elements = card.find_elements(By.CSS_SELECTOR, "[data-test-id='price-summary'] *")
-                for elem in price_elements:
-                    if "total" in elem.text.lower():
-                        hotel_data['price'] = elem.text.strip()
-                        break
-                else:
-                    hotel_data['price'] = "Precio no disponible"
-            except:
-                hotel_data['price'] = "Precio no disponible"
-        except:
-            hotel_data['price'] = "Precio no disponible"
-        
-        # Rating
-        try:
-            rating_element = card.find_element(By.CSS_SELECTOR, "span.uitk-badge-base-large span.is-visually-hidden")
-            hotel_data['rating'] = rating_element.text.strip()
-        except:
-            hotel_data['rating'] = "Rating no disponible"
-        
-        # Reviews
-        try:
-            reviews_element = card.find_element(By.CSS_SELECTOR, "span.uitk-text.uitk-type-200")
-            hotel_data['reviews'] = reviews_element.text.strip()
-        except:
-            hotel_data['reviews'] = "Reviews no disponibles"
-            
     except Exception as e:
-        print(f"Error extrayendo datos: {e}")
-    
-    return hotel_data
+        print(f"❌ Error en simulación humana: {e}")
 
-def scrape_expedia_manual():
+def stealth_driver():
+    """Configuración stealth máxima para Chrome"""
     options = Options()
+    
+    # Configuración anti-detección
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--disable-infobars")
     options.add_argument("--disable-notifications")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_argument("--disable-popup-blocking")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-web-security")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-features=VizDisplayCompositor")
+    options.add_argument("--disable-software-rasterizer")
+    
+    # Headers realistas
+    options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    
+    # Opciones experimentales para evitar detección
+    options.add_experimental_option("excludeSwitches", [
+        "enable-automation",
+        "enable-logging",
+        "ignore-certificate-errors",
+        "test-type"
+    ])
     options.add_experimental_option('useAutomationExtension', False)
+    options.add_experimental_option("prefs", {
+        "profile.default_content_setting_values.notifications": 2,
+        "profile.managed_default_content_settings.images": 1,
+        "credentials_enable_service": False,
+        "profile.password_manager_enabled": False
+    })
     
     driver = webdriver.Chrome(options=options)
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     
+    # Ejecutar scripts para ocultar WebDriver
+    driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+        'source': '''
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [1, 2, 3, 4, 5],
+            });
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['en-US', 'en', 'es'],
+            });
+            window.chrome = {
+                runtime: {},
+                app: {
+                    isInstalled: false,
+                    InstallState: {
+                        DISABLED: 'disabled',
+                        INSTALLED: 'installed',
+                        NOT_INSTALLED: 'not_installed'
+                    },
+                    RunningState: {
+                        CANNOT_RUN: 'cannot_run',
+                        READY_TO_RUN: 'ready_to_run',
+                        RUNNING: 'running'
+                    }
+                }
+            };
+        '''
+    })
+    
+    return driver
+
+def check_if_results_vanished(driver):
+    """Verifica si los resultados desaparecieron"""
     try:
-        url = "https://www.expedia.com/Hotel-Search?destination=Oaxaca%2C%20Oaxaca%2C%20Mexico&startDate=2025-09-09&endDate=2025-09-10&adults=1&rooms=1&sort=RECOMMENDED"
-        
-        print("🌐 Navegando a Expedia...")
-        driver.get(url)
-        
-        # Esperar a que cargue y mostrar lo que hay
-        time.sleep(6)
-        print("🔄 Página cargada, buscando modales...")
-        
-        # DEBUG: Mostrar información de modales presentes
-        debug_modal(driver)
-        
-        # Cerrar popups intensivamente
-        close_popups(driver)
-        
-        # Si todavía hay modales, pausar para intervención manual
-        time.sleep(2)
-        print("🔄 Verificando si quedan modales...")
-        
-        # Verificar bloqueo
-        if "access denied" in driver.page_source.lower():
-            print("❌ ¡BLOQUEO DETECTADO!")
-            return
-        
-        # Esperar un poco más y cerrar nuevamente
-        time.sleep(3)
-        close_popups(driver)
-        
-        print("🔍 Buscando hoteles...")
-        
-        # Hacer scroll
-        print("📜 Haciendo scroll...")
-        for i in range(3):
-            scroll_height = driver.execute_script("return document.body.scrollHeight")
-            driver.execute_script(f"window.scrollTo(0, {scroll_height * (i+1)/3})")
-            time.sleep(2)
-            close_popups(driver)  # Cerrar después de cada scroll
-        
-        print("⏳ Esperando a que carguen los hoteles...")
-        
-        main_selectors = [
-            '[data-stid="property-card"]',
-            '[data-test-id="property-card"]',
-            'div[data-stid="lodging-card-responsive"]'
+        # Buscar indicadores de que los resultados se vaciaron
+        empty_indicators = [
+            'div[data-stid="property-listing-results"]:empty',
+            'div[class*="no-results"]',
+            'div[class*="empty"]',
+            'div:contains("No results found")',
+            'div:contains("No se encontraron resultados")'
         ]
         
-        hotels = None
-        for selector in main_selectors:
-            try:
-                hotels = WebDriverWait(driver, 15).until(
-                    EC.presence_of_all_elements_located((By.CSS_SELECTOR, selector))
-                )
-                if hotels:
-                    print(f"✅ Encontrados {len(hotels)} hoteles con: {selector}")
-                    break
-            except TimeoutException:
-                print(f"⏭️  No se encontraron con: {selector}")
-                continue
+        for selector in empty_indicators:
+            elements = driver.find_elements(By.CSS_SELECTOR, selector)
+            if elements and any(el.is_displayed() for el in elements):
+                print("❌ Los resultados desaparecieron (detección anti-bot)")
+                return True
         
-        if not hotels:
-            print("❌ NO SE PUDIERON ENCONTRAR HOTELES")
-            # Guardar screenshot para debug
-            driver.save_screenshot('debug_screenshot.png')
-            print("📸 Captura de pantalla guardada como 'debug_screenshot.png'")
+        # Verificar si hay muy pocos elementos comparado con lo esperado
+        hotel_elements = driver.find_elements(By.CSS_SELECTOR, '[data-stid="property-card"], [data-test-id="property-card"]')
+        if len(hotel_elements) < 3:  # Si hay menos de 3 hoteles, probablemente se vació
+            print("❌ Muy pocos resultados, probable detección")
+            return True
             
-            # Guardar HTML para análisis
-            with open('debug_page.html', 'w', encoding='utf-8') as f:
-                f.write(driver.page_source)
-            print("📄 HTML guardado como 'debug_page.html'")
-            return
+        return False
         
-        results = []
-        print(f"📊 Procesando {len(hotels)} hoteles...")
-        
-        for i, hotel in enumerate(hotels):
-            try:
-                driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", hotel)
-                time.sleep(0.3)
-                
-                hotel_data = extract_hotel_data(hotel)
-                results.append(hotel_data)
-                print(f"🏨 Hotel {i+1}: {hotel_data['name']} - {hotel_data['price']}")
-                
-            except Exception as e:
-                print(f"❌ Error procesando hotel {i+1}: {e}")
+    except:
+        return False
+
+def rapid_extraction(driver):
+    """Extrae datos rápidamente antes de que Expedia detecte"""
+    print("⚡ Extracción rápida antes de detección...")
+    
+    results = []
+    max_attempts = 3
+    
+    for attempt in range(max_attempts):
+        try:
+            # Buscar hoteles inmediatamente
+            hotel_selectors = [
+                '[data-stid="property-card"]',
+                '[data-test-id="property-card"]',
+                'div[data-stid="lodging-card-responsive"]'
+            ]
+            
+            hotels = []
+            for selector in hotel_selectors:
+                try:
+                    hotels = driver.find_elements(By.CSS_SELECTOR, selector)
+                    if hotels:
+                        print(f"✅ Encontrados {len(hotels)} hoteles (intento {attempt + 1})")
+                        break
+                except:
+                    continue
+            
+            if not hotels:
+                print(f"❌ No se encontraron hoteles en intento {attempt + 1}")
+                time.sleep(2)
                 continue
+            
+            # Extraer datos rápidamente
+            for i, hotel in enumerate(hotels[:10]):  # Solo primeros 10 para velocidad
+                try:
+                    hotel_data = {}
+                    
+                    # Nombre (rápido)
+                    try:
+                        name = hotel.find_element(By.CSS_SELECTOR, "h3.uitk-heading")
+                        hotel_data['name'] = name.text.strip()
+                    except:
+                        hotel_data['name'] = "Nombre no disponible"
+                    
+                    # Precio (rápido)
+                    try:
+                        price = hotel.find_element(By.CSS_SELECTOR, ".uitk-text.uitk-type-end.uitk-type-300.uitk-text-default-theme")
+                        hotel_data['price'] = price.text.strip()
+                    except:
+                        hotel_data['price'] = "Precio no disponible"
+                    
+                    results.append(hotel_data)
+                    
+                    # Mostrar progreso cada 5 hoteles
+                    if (i + 1) % 5 == 0:
+                        print(f"📦 Extraídos {i + 1} hoteles...")
+                        
+                except Exception as e:
+                    continue
+            
+            if results:
+                break
+                
+        except Exception as e:
+            print(f"❌ Error en intento {attempt + 1}: {e}")
+            time.sleep(3)
+    
+    return results
+
+def scrape_expedia_stealth():
+    """Versión stealth con técnicas anti-detección"""
+    driver = stealth_driver()
+    
+    try:
+        # URL con parámetros simplificados
+        url = "https://www.expedia.com/Hotel-Search?destination=Oaxaca&startDate=2025-09-09&endDate=2025-09-10&adults=1"
         
-        with open('hoteles_oaxaca.json', 'w', encoding='utf-8') as f:
+        print("🌐 Navegando a Expedia (modo stealth)...")
+        driver.get(url)
+        
+        # Espera inicial aleatoria
+        initial_wait = random.uniform(4, 8)
+        print(f"⏰ Espera inicial: {initial_wait:.1f}s")
+        time.sleep(initial_wait)
+        
+        # Comportamiento humano inmediato
+        human_like_behavior(driver)
+        
+        # Verificar si ya nos detectaron
+        if check_if_results_vanished(driver):
+            print("🚨 Detectados! Reiniciando estrategia...")
+            return []
+        
+        # Extracción RÁPIDA de datos
+        print("⚡ Iniciando extracción rápida...")
+        results = rapid_extraction(driver)
+        
+        # Verificar si desaparecieron los resultados durante la extracción
+        if check_if_results_vanished(driver):
+            print("🚨 Resultados desaparecieron durante extracción")
+            # Intentar recuperar con scroll
+            driver.execute_script("window.scrollTo(0, 0)")
+            time.sleep(1)
+            results = rapid_extraction(driver)
+        
+        if not results:
+            print("❌ No se pudieron extraer datos")
+            return []
+        
+        # Guardar resultados
+        with open('hoteles_rapidos.json', 'w', encoding='utf-8') as f:
             json.dump(results, f, ensure_ascii=False, indent=2)
             
-        print(f"💾 Guardados {len(results)} hoteles en 'hoteles_oaxaca.json'")
+        print(f"💾 Guardados {len(results)} hoteles")
         
-        print("\n📋 RESUMEN:")
+        # Mostrar resumen
+        print("\n📋 RESULTADOS OBTENIDOS:")
         for i, hotel in enumerate(results[:5]):
             print(f"{i+1}. {hotel['name']} - {hotel['price']}")
         
-        print("\n🔍 El navegador permanecerá abierto para inspección...")
-        print("Presiona Enter en la terminal para cerrar")
-        input()
+        if len(results) > 5:
+            print(f"... y {len(results) - 5} hoteles más")
+        
+        return results
         
     except Exception as e:
-        print(f"❌ Error durante el scraping: {e}")
+        print(f"❌ Error durante scraping stealth: {e}")
         import traceback
         traceback.print_exc()
+        return []
     finally:
         driver.quit()
 
+def alternative_approach():
+    """Enfoque alternativo si el stealth falla"""
+    print("🔄 Intentando enfoque alternativo...")
+    
+    # 1. Usar diferentes user agents
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ]
+    
+    # 2. Intentar con diferentes ventanas
+    for i, user_agent in enumerate(user_agents):
+        print(f"🔧 Intentando con User Agent {i + 1}...")
+        try:
+            options = Options()
+            options.add_argument(f"--user-agent={user_agent}")
+            options.add_argument("--window-size=1920,1080")
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            
+            driver = webdriver.Chrome(options=options)
+            driver.get("https://www.expedia.com/Hotel-Search?destination=Oaxaca")
+            
+            time.sleep(5)
+            human_like_behavior(driver)
+            
+            results = rapid_extraction(driver)
+            if results:
+                print(f"✅ Éxito con User Agent {i + 1}")
+                driver.quit()
+                return results
+                
+            driver.quit()
+            time.sleep(3)
+            
+        except Exception as e:
+            print(f"❌ Error con User Agent {i + 1}: {e}")
+    
+    return []
+
 if __name__ == "__main__":
-    scrape_expedia_manual()
+    print("🚀 Iniciando scraping con protección anti-detección...")
+    
+    # Primero intento: Modo stealth
+    results = scrape_expedia_stealth()
+    
+    # Segundo intento: Enfoque alternativo si falla
+    if not results:
+        print("🔄 Primer intento fallido, probando enfoque alternativo...")
+        results = alternative_approach()
+    
+    # Resultado final
+    if results:
+        print(f"\n🎉 ¡Éxito! Se extrajeron {len(results)} hoteles")
+        print("💾 Resultados guardados en 'hoteles_rapidos.json'")
+    else:
+        print("\n❌ No se pudieron extraer datos. Expedia tiene fuertes protecciones.")
+        print("💡 Recomendaciones:")
+        print("1. Usar proxies rotativos")
+        print("2. Esperar 24 horas antes de intentar nuevamente")
+        print("3. Considerar usar una API de viajes en lugar de scraping")
+    
+    input("\nPresiona Enter para salir...")
