@@ -1,4 +1,3 @@
-# booking_scraper_completo.py - VERSIÓN MEJORADA CON EXTRACCIÓN DE REVIEWS
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -13,10 +12,8 @@ import random
 import re
 
 def setup_stealth_driver():
-    """Configura driver Chrome con técnicas stealth"""
     options = Options()
     
-    # Configuración anti-detección
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--disable-infobars")
@@ -39,7 +36,6 @@ def setup_stealth_driver():
     return driver
 
 def human_like_scroll(driver, scroll_amount=3000):
-    """Scroll humano para cargar más resultados"""
     print(f"📜 Haciendo scroll para cargar más hoteles...")
     
     total_scrolled = 0
@@ -50,11 +46,9 @@ def human_like_scroll(driver, scroll_amount=3000):
         driver.execute_script(f"window.scrollBy(0, {scroll_increment})")
         total_scrolled += scroll_increment
         
-        # Comportamiento humano: pausas variables
         pause_time = random.uniform(0.5, 1.5)
         time.sleep(pause_time)
         
-        # Cerrar popups durante el scroll
         if step % 3 == 0:
             handle_booking_popups(driver)
     
@@ -62,7 +56,6 @@ def human_like_scroll(driver, scroll_amount=3000):
     return total_scrolled
 
 def load_all_hotels(driver, max_hotels=100):
-    """Carga todos los hoteles disponibles mediante scroll infinito"""
     print(f"🔄 Cargando hasta {max_hotels} hoteles...")
     
     hotels_loaded = 0
@@ -71,18 +64,15 @@ def load_all_hotels(driver, max_hotels=100):
     max_iterations = 10
     
     for iteration in range(max_iterations):
-        # Obtener hoteles actuales
         current_hotels = driver.find_elements(By.CSS_SELECTOR, '[data-testid="property-card"]')
         current_count = len(current_hotels)
         
         print(f"📊 Iteración {iteration + 1}: {current_count} hoteles encontrados")
         
-        # Verificar si alcanzamos el máximo
         if current_count >= max_hotels:
             print(f"🎉 ¡Meta alcanzada! {current_count} hoteles cargados")
             return current_hotels[:max_hotels]
         
-        # Verificar si no hay más hoteles
         if current_count == previous_count:
             same_count_iterations += 1
             if same_count_iterations >= 2:
@@ -93,17 +83,13 @@ def load_all_hotels(driver, max_hotels=100):
         
         previous_count = current_count
         
-        # Scroll para cargar más resultados
         human_like_scroll(driver, 2000)
-        
-        # Esperar a que carguen nuevos elementos
         time.sleep(random.uniform(2, 4))
     
     print(f"📦 Total final: {previous_count} hoteles")
     return driver.find_elements(By.CSS_SELECTOR, '[data-testid="property-card"]')[:max_hotels]
 
 def extract_hotel_data_booking(card):
-    """Extrae datos básicos del hotel"""
     hotel_data = {}
     
     try:
@@ -144,8 +130,6 @@ def extract_hotel_data_booking(card):
                     hotel_data['evaluation'] = "No disponible"
             except:
                 hotel_data['evaluation'] = "No disponible"
-            
-            # Reviews count - MEJORADO
             try:
                 reviews_text = review_container.text
                 review_match = re.search(r'([\d\.,]+)\s*comentarios', reviews_text)
@@ -153,7 +137,6 @@ def extract_hotel_data_booking(card):
                     hotel_data['review_count'] = review_match.group(1).replace('.', '').replace(',', '')
                     hotel_data['reviews'] = f"{review_match.group(1)} comentarios"
                 else:
-                    # Intentar método alternativo
                     try:
                         review_elements = review_container.find_elements(By.CSS_SELECTOR, 'div')
                         for element in review_elements:
@@ -200,7 +183,6 @@ def extract_hotel_data_booking(card):
     return hotel_data
 
 def handle_booking_popups(driver):
-    """Maneja popups de Booking.com"""
     popup_selectors = [
         'button[aria-label*="Dismiss"]',
         'button[aria-label*="Close"]',
@@ -223,28 +205,19 @@ def handle_booking_popups(driver):
             continue
 
 def extract_hotel_reviews_sidebar(driver, hotel_url, max_reviews=10):
-    """
-    Extrae reseñas del sidebar modal de Booking.com
-    Basado en el botón 'Leer todos los comentarios' :cite[4]
-    """
     reviews = []
     original_window = driver.current_window_handle
     
     try:
         print(f"📖 Navegando a: {hotel_url[:80]}...")
         
-        # Abrir nueva pestaña para las reseñas
         driver.execute_script("window.open('');")
         driver.switch_to.window(driver.window_handles[1])
         driver.get(hotel_url)
         
-        # Esperar a que cargue la página
         time.sleep(4)
         handle_booking_popups(driver)
-        
-        # Intentar abrir el sidebar de reviews
         try:
-            # Buscar y hacer click en el botón "Leer todos los comentarios"
             all_reviews_button = WebDriverWait(driver, 15).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="fr-read-all-reviews"]'))
             )
@@ -252,16 +225,11 @@ def extract_hotel_reviews_sidebar(driver, hotel_url, max_reviews=10):
             print("✅ Botón 'Leer todos los comentarios' clickeado")
             time.sleep(3)
             
-            # Esperar a que cargue el sidebar
             WebDriverWait(driver, 15).until(
                 EC.presence_of_element_located((By.ID, 'reviewCardsSection'))
             )
             print("✅ Sidebar de reviews cargado")
-            
-            # Extraer reseñas del sidebar
             reviews = extract_reviews_from_sidebar(driver, max_reviews)
-            
-            # Cerrar el sidebar
             try:
                 close_button = driver.find_element(By.CSS_SELECTOR, 'button[aria-label*="Cerrar"], button[aria-label*="Close"]')
                 driver.execute_script("arguments[0].click();", close_button)
@@ -271,7 +239,6 @@ def extract_hotel_reviews_sidebar(driver, hotel_url, max_reviews=10):
                 
         except Exception as e:
             print(f"❌ No se pudo acceder a las reviews: {e}")
-            # Método alternativo si el sidebar falla
             try:
                 reviews = extract_reviews_alternative_method(driver, max_reviews)
             except Exception as alt_e:
@@ -280,32 +247,24 @@ def extract_hotel_reviews_sidebar(driver, hotel_url, max_reviews=10):
     except Exception as e:
         print(f"❌ Error general extrayendo reseñas: {e}")
     finally:
-        # Cerrar pestaña y volver a la principal
         driver.close()
         driver.switch_to.window(original_window)
     
     return reviews
 
 def extract_reviews_from_sidebar(driver, max_reviews):
-    """Extrae reviews del sidebar modal con scroll infinito :cite[2]"""
     reviews = []
     
     try:
-        # Localizar el contenedor del sidebar
         sidebar = driver.find_element(By.ID, 'reviewCardsSection')
         
         print("🔄 Extrayendo reseñas con scroll...")
-        
-        # Hacer scroll para cargar más reviews
         last_height = driver.execute_script("return arguments[0].scrollHeight", sidebar)
         same_height_count = 0
         
         for attempt in range(5):
-            # Scroll dentro del sidebar
             driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight", sidebar)
             time.sleep(2)
-            
-            # Verificar si hay nuevas reviews
             new_height = driver.execute_script("return arguments[0].scrollHeight", sidebar)
             if new_height == last_height:
                 same_height_count += 1
@@ -314,8 +273,6 @@ def extract_reviews_from_sidebar(driver, max_reviews):
             else:
                 same_height_count = 0
                 last_height = new_height
-        
-        # Extraer todas las reviews visibles
         review_elements = driver.find_elements(By.CSS_SELECTOR, '[data-testid="review-card"]')[:max_reviews]
         print(f"📝 Encontradas {len(review_elements)} reseñas")
         
@@ -337,7 +294,6 @@ def extract_reviews_from_sidebar(driver, max_reviews):
     return reviews
 
 def extract_single_review_data(review_element):
-    """Extrae datos de una sola reseña :cite[1]:cite[6]"""
     review_data = {}
     
     try:
@@ -382,18 +338,15 @@ def extract_single_review_data(review_element):
     return review_data
 
 def extract_reviews_alternative_method(driver, max_reviews):
-    """Método alternativo para extraer reviews si el sidebar falla"""
     reviews = []
     
     try:
-        # Intentar encontrar reviews directamente en la página
         review_elements = driver.find_elements(By.CSS_SELECTOR, '[data-testid="review-row"]')[:max_reviews]
         
         for review_element in review_elements:
             try:
                 review_data = {}
                 
-                # Extraer datos básicos de la review
                 try:
                     title_element = review_element.find_element(By.CSS_SELECTOR, '[data-testid="review-title"]')
                     review_data['title'] = title_element.text.strip()
@@ -416,7 +369,6 @@ def extract_reviews_alternative_method(driver, max_reviews):
     return reviews
 
 def scrape_booking_complete(destination, checkin_date, checkout_date, max_hotels=50, max_reviews=10):
-    """Función principal de scraping con extracción de reviews"""
     driver = setup_stealth_driver()
     all_hotels_data = []
     
@@ -437,27 +389,21 @@ def scrape_booking_complete(destination, checkin_date, checkout_date, max_hotels
         print(f"🌐 Navegando a: {destination}")
         driver.get(url)
         
-        # Esperar inicial
         time.sleep(5)
         handle_booking_popups(driver)
         
-        # Cargar todos los hoteles
         all_hotels = load_all_hotels(driver, max_hotels)
         print(f"🏨 Total de hoteles a procesar: {len(all_hotels)}")
         
-        # Extraer datos de cada hotel
         for i, hotel in enumerate(all_hotels):
             try:
                 print(f"\n🔍 Procesando hotel {i+1}/{len(all_hotels)}")
                 
-                # Scroll para hacer visible
                 driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", hotel)
                 time.sleep(0.5)
                 
-                # Datos básicos
                 hotel_data = extract_hotel_data_booking(hotel)
                 
-                # Extraer reseñas si hay URL disponible
                 hotel_url = hotel_data.get('url', '')
                 if hotel_url and hotel_url != "URL no disponible":
                     print(f"📖 Extrayendo reseñas del hotel...")
@@ -473,7 +419,6 @@ def scrape_booking_complete(destination, checkin_date, checkout_date, max_hotels
                 print(f"   📊 Reviews: {hotel_data.get('review_count', 'N/A')}")
                 print(f"   📝 Reseñas extraídas: {len(hotel_data.get('reviews_detailed', []))}")
                 
-                # Pausa aleatoria entre hoteles
                 sleep_time = random.uniform(2, 4)
                 time.sleep(sleep_time)
                 
@@ -481,7 +426,6 @@ def scrape_booking_complete(destination, checkin_date, checkout_date, max_hotels
                 print(f"❌ Error procesando hotel {i+1}: {e}")
                 continue
         
-        # Guardar resultados
         if all_hotels_data:
             filename = f"booking_{destination.lower().replace(' ', '_')}_completo.json"
             with open(filename, 'w', encoding='utf-8') as f:
@@ -489,7 +433,6 @@ def scrape_booking_complete(destination, checkin_date, checkout_date, max_hotels
             
             print(f"\n💾 Guardados {len(all_hotels_data)} hoteles con reseñas en {filename}")
             
-            # Estadísticas
             total_reviews = sum(len(hotel.get('reviews_detailed', [])) for hotel in all_hotels_data)
             hotels_with_reviews = sum(1 for hotel in all_hotels_data if hotel.get('reviews_detailed'))
             
@@ -506,7 +449,6 @@ def scrape_booking_complete(destination, checkin_date, checkout_date, max_hotels
     finally:
         driver.quit()
 
-# USO
 if __name__ == "__main__":
     print("🚀 Iniciando scraping completo de Booking.com...")
     
@@ -514,7 +456,7 @@ if __name__ == "__main__":
     destination = "Oaxaca, Mexico"
     checkin_date = "2025-09-09"
     checkout_date = "2025-09-10"
-    max_hotels = 30  # Reducido para pruebas
+    max_hotels = 50  # Reducido para pruebas
     max_reviews = 5   # Reducido para pruebas
     
     results = scrape_booking_complete(destination, checkin_date, checkout_date, max_hotels, max_reviews)
