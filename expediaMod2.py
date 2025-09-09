@@ -1,4 +1,3 @@
-# expediaMod2.py - VERSIÓN CON SELECTORES ESPECÍFICOS PARA MODAL INICIAL
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -9,28 +8,22 @@ import time
 import json
 
 def close_initial_modal(driver):
-    """Cierra específicamente el modal que aparece al cargar la página"""
     print("🔍 Buscando modal inicial específico...")
     
-    # SELECTORES ESPECÍFICOS para el modal inicial de Expedia
     initial_modal_selectors = [
-        # Modal de suscripción/registro común en Expedia
         'div[data-stid="form-modal"]',
         'div[data-test-id="signin-modal"]',
         'div[data-modal-id="signin"]',
         'div[role="dialog"][aria-label*="sign in"]',
         
-        # Modal de "Continue with Google/Email"
         'div:contains("Continue with Google")',
         'div:contains("Continuar con Google")',
         'div:contains("Sign in")',
         'div:contains("Iniciar sesión")',
         
-        # Modal de email subscription
         'div[data-stid="subscription-modal"]',
         'div[data-test-id="email-signup-modal"]',
         
-        # Botones específicos de cierre para estos modales
         'button[aria-label="Close"]',
         'button:contains("Maybe later")',
         'button:contains("No thanks")',
@@ -38,7 +31,6 @@ def close_initial_modal(driver):
         'button:contains("Cerrar")',
         'button:contains("Cancelar")',
         
-        # Botones dentro de modales específicos
         'div[data-stid="form-modal"] button',
         'div[data-test-id="signin-modal"] button',
         'div[role="dialog"] button'
@@ -52,12 +44,10 @@ def close_initial_modal(driver):
                     if element.is_displayed():
                         print(f"✅ Encontrado modal inicial con: {selector}")
                         
-                        # Si es un botón, hacer click
                         if element.tag_name.lower() == 'button':
                             driver.execute_script("arguments[0].click();", element)
                             print(f"✅ Cerrado modal inicial con botón: {selector}")
                             return True
-                        # Si es un div/modal, buscar botones de cierre dentro
                         else:
                             close_buttons = element.find_elements(By.CSS_SELECTOR, 'button')
                             for btn in close_buttons:
@@ -73,15 +63,12 @@ def close_initial_modal(driver):
     return False
 
 def close_popups(driver):
-    """Cierra todos los popups, modales y overlays posibles"""
     print("Buscando y cerrando popups...")
     
-    # PRIMERO: Intentar cerrar el modal inicial específico
     if close_initial_modal(driver):
         time.sleep(2)
         return 1
     
-    # SEGUNDO: Selectores generales
     popup_selectors = [
         'button[aria-label*="close"]',
         'button[aria-label*="dismiss"]',
@@ -116,7 +103,6 @@ def close_popups(driver):
         except:
             continue
     
-    # TERCERO: Intentar con Escape key
     try:
         from selenium.webdriver.common.keys import Keys
         body = driver.find_element(By.TAG_NAME, 'body')
@@ -127,7 +113,6 @@ def close_popups(driver):
     except:
         pass
     
-    # CUARTO: Buscar overlays y hacer click
     overlay_selectors = [
         'div[class*="overlay"]',
         'div[class*="backdrop"]',
@@ -155,10 +140,8 @@ def close_popups(driver):
     return closed_count
 
 def debug_modal(driver):
-    """Función para debuggear y identificar el modal"""
     print("🔍 Debuggeando modales presentes...")
     
-    # Buscar todos los elementos visibles que podrían ser modales
     modal_indicators = [
         'div[role="dialog"]',
         'div[class*="modal"]',
@@ -258,38 +241,31 @@ def scrape_expedia_manual():
         print("🌐 Navegando a Expedia...")
         driver.get(url)
         
-        # Esperar a que cargue y mostrar lo que hay
         time.sleep(6)
         print("🔄 Página cargada, buscando modales...")
         
-        # DEBUG: Mostrar información de modales presentes
         debug_modal(driver)
         
-        # Cerrar popups intensivamente
         close_popups(driver)
         
-        # Si todavía hay modales, pausar para intervención manual
         time.sleep(2)
         print("🔄 Verificando si quedan modales...")
         
-        # Verificar bloqueo
         if "access denied" in driver.page_source.lower():
             print("❌ ¡BLOQUEO DETECTADO!")
             return
         
-        # Esperar un poco más y cerrar nuevamente
         time.sleep(3)
         close_popups(driver)
         
         print("🔍 Buscando hoteles...")
         
-        # Hacer scroll
         print("📜 Haciendo scroll...")
         for i in range(3):
             scroll_height = driver.execute_script("return document.body.scrollHeight")
             driver.execute_script(f"window.scrollTo(0, {scroll_height * (i+1)/3})")
             time.sleep(2)
-            close_popups(driver)  # Cerrar después de cada scroll
+            close_popups(driver)
         
         print("⏳ Esperando a que carguen los hoteles...")
         
@@ -314,11 +290,9 @@ def scrape_expedia_manual():
         
         if not hotels:
             print("❌ NO SE PUDIERON ENCONTRAR HOTELES")
-            # Guardar screenshot para debug
             driver.save_screenshot('debug_screenshot.png')
             print("📸 Captura de pantalla guardada como 'debug_screenshot.png'")
             
-            # Guardar HTML para análisis
             with open('debug_page.html', 'w', encoding='utf-8') as f:
                 f.write(driver.page_source)
             print("📄 HTML guardado como 'debug_page.html'")
