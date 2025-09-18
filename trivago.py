@@ -246,11 +246,10 @@ class TrivagoScraper:
             # Precio
             price = "No disponible"
             try:
-                price_element = hotel_element.find_element(By.CSS_SELECTOR, "[data-testid='recommended-price']")
+                price_element = hotel_element.find_element(By.CSS_SELECTOR, "[data-testid='expected-price']")
                 price = price_element.text.strip()
             except:
                 pass
-            
             # Calificación
             rating = "No disponible"
             try:
